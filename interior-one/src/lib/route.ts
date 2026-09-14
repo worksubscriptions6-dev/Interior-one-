@@ -18,7 +18,7 @@ export function route<P = Record<string, string>>(
   fn: (ctx: Ctx<P>) => Promise<unknown>,
   opts: { roles?: Role[] } = {},
 ) {
-  return async (req: NextRequest, context: { params: P }) => {
+  return async (req: NextRequest, context: { params: Promise<P> }) => {
     try {
       const user = await requireUser();
       if (opts.roles?.length && !opts.roles.includes(user.role)) {
@@ -27,7 +27,8 @@ export function route<P = Record<string, string>>(
           { status: 403 },
         );
       }
-      const data = await fn({ req, params: context?.params ?? ({} as P), user });
+      const params = ((await context?.params) ?? {}) as P;
+      const data = await fn({ req, params, user });
       return NextResponse.json(data ?? { ok: true });
     } catch (err) {
       if (err instanceof ZodError) {
