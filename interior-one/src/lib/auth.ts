@@ -10,13 +10,9 @@ export interface SessionUser {
   role: Role;
 }
 
-/**
- * Supabase owns the session. We own the role.
- * The auth uid is the primary key of our User row, so the two stay in step
- * without a second password store.
- */
+/** Supabase owns the session. We own the role. */
 export async function currentUser(): Promise<SessionUser | null> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
