@@ -1,0 +1,54 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600&family=Inter:wght@400;450;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Interior One: warm paper, charcoal ink, gold accent */
+    --background: 40 33% 95%;
+    --foreground: 30 16% 9%;
+    --card: 0 0% 100%;
+    --card-foreground: 30 16% 9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 30 16% 9%;
+    --primary: 30 14% 12%;
+    --primary-foreground: 40 40% 95%;
+    --secondary: 38 33% 92%;
+    --secondary-foreground: 30 16% 12%;
+    --muted: 38 30% 93%;
+    --muted-foreground: 33 10% 45%;
+    --accent: 34 46% 45%;          /* gold */
+    --accent-foreground: 40 40% 97%;
+    --destructive: 8 49% 46%;
+    --destructive-foreground: 40 40% 97%;
+    --success: 145 32% 36%;
+    --warning: 38 62% 43%;
+    --border: 36 33% 85%;
+    --input: 36 33% 85%;
+    --ring: 34 46% 45%;
+    --radius: 0.55rem;
+
+    --ink-bar: 34 14% 11%;         /* the dark header */
+    --gold: 34 46% 45%;
+    --gold-light: 38 50% 92%;
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+    background-image:
+      radial-gradient(1200px 500px at 15% -8%, hsl(44 50% 98%) 0%, transparent 60%),
+      linear-gradient(180deg, hsl(42 40% 96%) 0%, hsl(38 30% 92%) 100%);
+    background-attachment: fixed;
+    -webkit-font-smoothing: antialiased;
+  }
+  .font-display {
+    font-family: 'Cormorant Garamond', Iowan Old Style, Palatino, Georgia, serif;
+  }
+  .tabular { font-variant-numeric: tabular-nums; }
+}

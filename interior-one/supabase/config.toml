@@ -1,0 +1,18 @@
+# Passkeys must be enabled per project. The Dashboard equivalent is
+# Authentication -> Passkeys.
+#
+# WARNING: passkeys are cryptographically bound to rp_id. Changing it makes
+# every passkey your team has registered unusable. Set it to the final domain
+# before anyone enrols, and never change it.
+
+[auth.passkey]
+enabled = true
+
+[auth.webauthn]
+rp_display_name = "Interior One"
+rp_id = "localhost"
+rp_origins = ["http://localhost:3000"]
+
+# Production — replace the two lines above with your real domain:
+# rp_id = "crm.interiorone.in"
+# rp_origins = ["https://crm.interiorone.in"]

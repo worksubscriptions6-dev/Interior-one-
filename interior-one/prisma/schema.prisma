@@ -1,0 +1,305 @@
+// Interior One — data model
+// Every stage change on a lead happens through a Call. Every quotation belongs
+// to a lead. A project only exists because a lead was won.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  // Pooled connection (pgbouncer, port 6543) for the serverless app
+  url       = env("DATABASE_URL")
+  // Direct connection (port 5432) — Prisma migrations need this
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  OWNER        // the architect: sees cost and margin
+  SALES        // telecaller: leads, calls, follow-ups
+  COORDINATOR  // drawings, production, site, handover
+}
+
+enum LeadStage {
+  NEW
+  CONTACTED
+  QUALIFIED
+  VISIT
+  DESIGN
+  PRESENTED
+  NEGOTIATION
+  WON
+  LOST
+}
+
+enum WorkType {
+  CEILING
+  KITCHEN
+  FULLHOME
+  COMMERCIAL
+}
+
+enum LeadSource {
+  AD_KITCHEN
+  AD_FULLHOME
+  AD_CEILING
+  AD_COMMERCIAL
+  INSTAGRAM
+  REFERRAL
+  TRADE
+  WALKIN
+}
+
+enum QuoteStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  DECLINED
+}
+
+enum Unit {
+  NOS
+  SQFT
+  RFT
+  LUMP
+}
+
+enum MilestoneKey {
+  TOKEN        // 10% — drawings begin
+  PRODUCTION   // 40% — released to the pressing unit
+  DELIVERY     // 40% — material reaches site
+  HANDOVER     // 10% — after completion
+}
+
+/// Mirrors a Supabase auth user. `id` IS the Supabase auth uid — passwords,
+/// sessions and resets all live in Supabase, never in our tables.
+model User {
+  id        String   @id
+  email     String   @unique
+  name      String
+  role      Role     @default(SALES)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  /// Quick-unlock PIN, hashed. Never the account password — it only unlocks
+  /// the app on a device that has already signed in properly once.
+  pinHash       String?
+  pinFailures   Int       @default(0)
+  pinLockedTill DateTime?
+
+  ownedLeads   Lead[]    @relation("LeadOwner")
+  calls        Call[]
+  quotes       Quote[]
+  projects     Project[] @relation("ProjectCoordinator")
+}
+
+model Lead {
+  id            String     @id @default(cuid())
+  name          String
+  phone         String?
+  place         String?
+  type          WorkType   @default(KITCHEN)
+  source        LeadSource @default(WALKIN)
+  budgetNote    String?
+  /// Contract value including GST once a quotation is accepted
+  value         Decimal    @default(0) @db.Decimal(12, 2)
+
+  stage         LeadStage  @default(NEW)
+  /// Furthest stage ever reached, so a lost lead still counts in the funnel
+  furthest      LeadStage  @default(NEW)
+  stageAt       DateTime   @default(now())
+  /// Null means never called: the lead sits in "Call these now"
+  nextCall      DateTime?  @db.Date
+  lostReason    String?
+  /// When the first WhatsApp message was sent; after this the button opens the chat
+  waFirstAt     DateTime?
+
+  ownerId       String?
+  owner         User?      @relation("LeadOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  calls         Call[]
+  quotes        Quote[]
+  project       Project?
+
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@index([stage])
+  @@index([nextCall])
+  @@index([phone])
+  @@index([createdAt])
+}
+
+/// The only way a lead moves. Remarks, resulting stage and the next call
+/// are all required at the service layer.
+model Call {
+  id        String    @id @default(cuid())
+  leadId    String
+  lead      Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  userId    String?
+  user      User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  remarks   String
+  stage     LeadStage
+  nextCall  DateTime? @db.Date
+  createdAt DateTime  @default(now())
+
+  @@index([leadId, createdAt])
+}
+
+model Quote {
+  id            String      @id @default(cuid())
+  /// IO-2026-001, or IO-2026-001 R2 for a revision
+  no            String      @unique
+  /// Base number shared by every revision of the same quotation
+  base          String
+  rev           Int         @default(1)
+
+  leadId        String
+  lead          Lead        @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  client        String
+  place         String?
+  phone         String?
+  date          DateTime    @default(now()) @db.Date
+  validityDays  Int         @default(30)
+
+  preparedById  String?
+  preparedBy    User?       @relation(fields: [preparedById], references: [id], onDelete: SetNull)
+
+  /// Show an inflated list price and a discount that lands on the real price
+  showOffer     Boolean     @default(false)
+  offerPct      Int         @default(30)
+  gstPct        Int         @default(18)
+
+  status        QuoteStatus @default(DRAFT)
+  notes         String?
+
+  rooms         QuoteRoom[]
+  project       Project?
+
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([leadId])
+  @@index([base, rev])
+}
+
+model QuoteRoom {
+  id       String      @id @default(cuid())
+  quoteId  String
+  quote    Quote       @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  name     String
+  position Int         @default(0)
+  items    QuoteItem[]
+
+  @@index([quoteId, position])
+}
+
+model QuoteItem {
+  id          String    @id @default(cuid())
+  roomId      String
+  room        QuoteRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  position    Int       @default(0)
+
+  description String
+  spec        String?
+  unit        Unit      @default(NOS)
+  size        String?
+  qty         Decimal   @default(1) @db.Decimal(12, 2)
+  /// Our cost per unit. Never leaves the API for a SALES user.
+  cost        Decimal   @default(0) @db.Decimal(12, 2)
+  markupPct   Decimal   @default(45) @db.Decimal(6, 2)
+
+  @@index([roomId, position])
+}
+
+model Project {
+  id            String        @id @default(cuid())
+  leadId        String        @unique
+  lead          Lead          @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  quoteId       String?       @unique
+  quote         Quote?        @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+
+  client        String
+  type          WorkType
+  value         Decimal       @db.Decimal(12, 2)
+
+  /// 0..6 against the seven delivery steps
+  step          Int           @default(0)
+  promisedDate  DateTime?     @db.Date
+  handoverDate  DateTime?     @db.Date
+  pressingUnit  String?
+
+  coordinatorId String?
+  coordinator   User?         @relation("ProjectCoordinator", fields: [coordinatorId], references: [id], onDelete: SetNull)
+
+  steps         ProjectStep[]
+  payments      Payment[]
+
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([step])
+}
+
+model ProjectStep {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  step      Int
+  reachedAt DateTime @db.Date
+
+  @@unique([projectId, step])
+}
+
+model Payment {
+  id         String       @id @default(cuid())
+  projectId  String
+  project    Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  key        MilestoneKey
+  pct        Int
+  amount     Decimal      @db.Decimal(12, 2)
+  /// Set when the project reaches the step this milestone hangs off
+  dueAt      DateTime?    @db.Date
+  receivedAt DateTime?    @db.Date
+
+  @@unique([projectId, key])
+  @@index([dueAt])
+}
+
+/// Our cost per unit, not the client price.
+model RateItem {
+  id        String  @id @default(cuid())
+  group     String
+  name      String
+  spec      String?
+  unit      Unit    @default(NOS)
+  cost      Decimal @db.Decimal(12, 2)
+  markupPct Decimal @default(45) @db.Decimal(6, 2)
+  active    Boolean @default(true)
+
+  @@index([group, name])
+}
+
+model CampaignSpend {
+  id       String  @id @default(cuid())
+  /// YYYY-MM
+  month    String
+  campaign String
+  amount   Decimal @db.Decimal(12, 2)
+
+  @@unique([month, campaign])
+}
+
+model MonthlyTarget {
+  /// YYYY-MM
+  month   String  @id
+  revenue Decimal @db.Decimal(12, 2)
+}
+
+/// Free-form firm settings: WhatsApp template, break-even, GST, mark-up floor and target
+model Setting {
+  key   String @id
+  value Json
+}
